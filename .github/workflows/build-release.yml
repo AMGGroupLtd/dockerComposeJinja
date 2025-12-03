@@ -1,0 +1,112 @@
+name: Build and Release dcj
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            ext: ""
+          - os: macos-latest
+            ext: ""
+          - os: windows-latest
+            ext: ".exe"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          # Runtime deps
+          if [[ -f requirements.txt ]]; then pip install -r requirements.txt; fi
+          # Packager
+          pip install pyinstaller
+
+      - name: Build single-file binary with PyInstaller
+        shell: bash
+        run: |
+          pyinstaller --onefile --name dcj dcj.py
+
+      - name: Compute metadata (version, platform)
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VER="${GITHUB_REF_NAME}"
+          else
+            VER="dev-${GITHUB_SHA::7}"
+          fi
+          OSNAME=$(uname -s || echo unknown)
+          ARCH=$(uname -m || echo unknown)
+          case "$OSNAME" in
+            Linux) OSID=linux ;;
+            Darwin) OSID=macos ;;
+            MINGW*|MSYS*|CYGWIN*) OSID=windows ;;
+            *) OSID=$OSNAME ;;
+          esac
+          PLATFORM="${OSID}-${ARCH}"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          mkdir -p release
+          BIN="dist/dcj${{ matrix.ext }}"
+          if [[ ! -f "$BIN" ]]; then
+            echo "Build output not found: $BIN" >&2
+            exit 1
+          fi
+          OUT_NAME="dcj-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.platform }}${{ matrix.ext }}"
+          cp "$BIN" "release/$OUT_NAME"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dcj-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.platform }}
+          path: release/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts (debug)
+        run: ls -al artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/*

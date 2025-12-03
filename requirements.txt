@@ -1,0 +1,7 @@
+# Runtime dependencies for dcj.py
+# Only Jinja2 is required at runtime.
+Jinja2>=3.1,<4.0
+
+# Optional tools (not required at runtime):
+# For packaging into a single binary
+# pyinstaller>=6.0
