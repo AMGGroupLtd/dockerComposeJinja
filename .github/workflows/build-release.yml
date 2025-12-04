@@ -55,16 +55,23 @@ jobs:
           docker run --rm -v "$PWD":/io -w /io quay.io/pypa/manylinux_2_28_x86_64 bash -lc '
             set -euo pipefail
             PYV="${{ env.PY_VERSION }}"
-            PREFIX="/opt/cpython-${PYV}"
+            # Resolve full patch version when PYV is only major.minor (e.g., 3.12 -> 3.12.x)
+            if [[ "$PYV" =~ ^[0-9]+\.[0-9]+$ ]]; then
+              PYV_FULL=$(wget -qO- https://www.python.org/ftp/python/ | grep -oP "href=\"${PYV//./\\.}\\.\\d+/" | grep -oP "[0-9]+\\.[0-9]+\\.\\d+" | sort -V | tail -1)
+            else
+              PYV_FULL="$PYV"
+            fi
+            echo "Using Python version: ${PYV_FULL}"
+            PREFIX="/opt/cpython-${PYV_FULL}"
             dnf -y install gcc make zlib-devel bzip2-devel xz-devel libffi-devel readline-devel sqlite-devel openssl-devel wget tar
             cd /tmp
-            wget -q https://www.python.org/ftp/python/${PYV}/Python-${PYV}.tgz
-            tar -xzf Python-${PYV}.tgz
-            cd Python-${PYV}
+            wget -q https://www.python.org/ftp/python/${PYV_FULL}/Python-${PYV_FULL}.tgz
+            tar -xzf Python-${PYV_FULL}.tgz
+            cd Python-${PYV_FULL}
             ./configure --prefix="${PREFIX}" --enable-optimizations --with-lto --enable-shared
             make -j"$(nproc)"
             make install
-            echo "${PREFIX}/lib" > /etc/ld.so.conf.d/cpython-${PYV}.conf
+            echo "${PREFIX}/lib" > /etc/ld.so.conf.d/cpython-${PYV_FULL}.conf
             ldconfig
             "${PREFIX}/bin/python3" -m pip install --upgrade pip
             if [ -f requirements.txt ]; then "${PREFIX}/bin/python3" -m pip install -r requirements.txt; fi
@@ -86,16 +93,24 @@ jobs:
           run: |
             set -euo pipefail
             PYV="${{ env.PY_VERSION }}"
-            PREFIX="/opt/cpython-${PYV}"
-            dnf -y install gcc make zlib-devel bzip2-devel xz-devel libffi-devel readline-devel sqlite-devel openssl-devel wget tar
+            # Resolve full patch version when PYV is only major.minor (e.g., 3.12 -> 3.12.x)
+            if [[ "$PYV" =~ ^[0-9]+\.[0-9]+$ ]]; then
+              PYV_FULL=$(wget -qO- https://www.python.org/ftp/python/ | grep -oP "href=\"${PYV//./\\.}\\.\\d+/" | grep -oP "[0-9]+\\.[0-9]+\\.\\d+" | sort -V | tail -1)
+            else
+              PYV_FULL="$PYV"
+            fi
+            echo "Using Python version: ${PYV_FULL}"
+            PREFIX="/opt/cpython-${PYV_FULL}"
+            # Clear default nodocs so info pages are installed and scriptlets succeed; also install texinfo for install-info
+            dnf -y --setopt=tsflags= install gcc make zlib-devel bzip2-devel xz-devel libffi-devel readline-devel sqlite-devel openssl-devel wget tar texinfo
             cd /tmp
-            wget -q https://www.python.org/ftp/python/${PYV}/Python-${PYV}.tgz
-            tar -xzf Python-${PYV}.tgz
-            cd Python-${PYV}
+            wget -q https://www.python.org/ftp/python/${PYV_FULL}/Python-${PYV_FULL}.tgz
+            tar -xzf Python-${PYV_FULL}.tgz
+            cd Python-${PYV_FULL}
             ./configure --prefix="${PREFIX}" --enable-optimizations --with-lto --enable-shared
             make -j"$(nproc)"
             make install
-            echo "${PREFIX}/lib" > /etc/ld.so.conf.d/cpython-${PYV}.conf
+            echo "${PREFIX}/lib" > /etc/ld.so.conf.d/cpython-${PYV_FULL}.conf
             ldconfig
             "${PREFIX}/bin/python3" -m pip install --upgrade pip
             if [ -f requirements.txt ]; then "${PREFIX}/bin/python3" -m pip install -r requirements.txt; fi
