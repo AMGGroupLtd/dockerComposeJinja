@@ -47,41 +47,61 @@ jobs:
         with:
           python-version: ${{ env.PY_VERSION }}
 
-      # Build for Linux x86_64 using manylinux2014 in Docker
-      - name: Build (Linux x86_64, manylinux2014)
+      # Build for Linux x86_64 using manylinux_2_28 in Docker (build shared CPython to satisfy PyInstaller)
+      - name: Build (Linux x86_64, manylinux_2_28)
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.linux_arch == 'x86_64' }}
         shell: bash
         run: |
-          docker run --rm -v "$PWD":/io -w /io quay.io/pypa/manylinux2014_x86_64 bash -lc '
-            PYV="${{ env.PY_VERSION }}" && \
-            PYMAJ=${PYV%.*} && \
-            PYMIN=${PYV#*.} && \
-            PYTAG="cp${PYMAJ}${PYMIN}-cp${PYMAJ}${PYMIN}" && \
-            PY="/opt/python/$PYTAG/bin/python" && \
-            $PY -m pip install --upgrade pip && \
-            if [ -f requirements.txt ]; then $PY -m pip install -r requirements.txt; fi && \
-            $PY -m pip install pyinstaller && \
-            $PY -m PyInstaller --onefile --name "${{ env.APP_NAME }}" "${{ env.ENTRYPOINT }}"
+          docker run --rm -v "$PWD":/io -w /io quay.io/pypa/manylinux_2_28_x86_64 bash -lc '
+            set -euo pipefail
+            PYV="${{ env.PY_VERSION }}"
+            PREFIX="/opt/cpython-${PYV}"
+            dnf -y install gcc make zlib-devel bzip2-devel xz-devel libffi-devel readline-devel sqlite-devel openssl-devel wget tar
+            cd /tmp
+            wget -q https://www.python.org/ftp/python/${PYV}/Python-${PYV}.tgz
+            tar -xzf Python-${PYV}.tgz
+            cd Python-${PYV}
+            ./configure --prefix="${PREFIX}" --enable-optimizations --with-lto --enable-shared
+            make -j"$(nproc)"
+            make install
+            echo "${PREFIX}/lib" > /etc/ld.so.conf.d/cpython-${PYV}.conf
+            ldconfig
+            "${PREFIX}/bin/python3" -m pip install --upgrade pip
+            if [ -f requirements.txt ]; then "${PREFIX}/bin/python3" -m pip install -r requirements.txt; fi
+            "${PREFIX}/bin/python3" -m pip install pyinstaller
+            export LD_LIBRARY_PATH="${PREFIX}/lib${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}"
+            "${PREFIX}/bin/pyinstaller" --onefile --name "${{ env.APP_NAME }}" "${{ env.ENTRYPOINT }}"
           '
 
-      # Build for Linux aarch64 using manylinux2014 under QEMU
-      - name: Build (Linux aarch64, manylinux2014)
+      # Build for Linux aarch64 using manylinux_2_28 under QEMU (build shared CPython)
+      - name: Build (Linux aarch64, manylinux_2_28)
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.linux_arch == 'aarch64' }}
         uses: uraimo/run-on-arch-action@v2
         with:
           arch: aarch64
-          base_image: quay.io/pypa/manylinux2014_aarch64
+          base_image: quay.io/pypa/manylinux_2_28_aarch64
           githubToken: ${{ github.token }}
           install: |
-            echo "Using manylinux2014 aarch64 base image"
+            echo "Using manylinux_2_28 aarch64 base image"
           run: |
+            set -euo pipefail
             PYV="${{ env.PY_VERSION }}"
-            PYTAG="cp${PYV/./}-cp${PYV/./}"
-            PY="/opt/python/$PYTAG/bin/python"
-            $PY -m pip install --upgrade pip
-            if [ -f requirements.txt ]; then $PY -m pip install -r requirements.txt; fi
-            $PY -m pip install pyinstaller
-            $PY -m PyInstaller --onefile --name "${{ env.APP_NAME }}" "${{ env.ENTRYPOINT }}"
+            PREFIX="/opt/cpython-${PYV}"
+            dnf -y install gcc make zlib-devel bzip2-devel xz-devel libffi-devel readline-devel sqlite-devel openssl-devel wget tar
+            cd /tmp
+            wget -q https://www.python.org/ftp/python/${PYV}/Python-${PYV}.tgz
+            tar -xzf Python-${PYV}.tgz
+            cd Python-${PYV}
+            ./configure --prefix="${PREFIX}" --enable-optimizations --with-lto --enable-shared
+            make -j"$(nproc)"
+            make install
+            echo "${PREFIX}/lib" > /etc/ld.so.conf.d/cpython-${PYV}.conf
+            ldconfig
+            "${PREFIX}/bin/python3" -m pip install --upgrade pip
+            if [ -f requirements.txt ]; then "${PREFIX}/bin/python3" -m pip install -r requirements.txt; fi
+            "${PREFIX}/bin/python3" -m pip install pyinstaller
+            export LD_LIBRARY_PATH="${PREFIX}/lib${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}"
+            "${PREFIX}/bin/pyinstaller" --onefile --name "${{ env.APP_NAME }}" "${{ env.ENTRYPOINT }}"
 
       # Non-Linux builds (macOS/Windows)
       - name: Install build dependencies

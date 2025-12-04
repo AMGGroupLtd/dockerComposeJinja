@@ -43,7 +43,7 @@ DEFAULT_ENV_FILE = ".env"
 # --- Utilities ---
 
 # Version and author metadata (override via env: DCJ_VERSION, DCJ_AUTHOR)
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 __author__ = "Matt Lowe <marl.scot.1@googlemail.com>"
 
 def which_compose() -> Tuple[List[str], str]:
