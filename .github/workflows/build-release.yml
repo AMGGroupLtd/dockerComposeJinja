@@ -70,11 +70,10 @@ jobs:
         uses: uraimo/run-on-arch-action@v2
         with:
           arch: aarch64
-          distro: ubuntu22.04
-          image: quay.io/pypa/manylinux2014_aarch64
+          base_image: quay.io/pypa/manylinux2014_aarch64
           githubToken: ${{ github.token }}
           install: |
-            echo "Using manylinux2014 aarch64 image"
+            echo "Using manylinux2014 aarch64 base image"
           run: |
             PYV="${{ env.PY_VERSION }}"
             PYTAG="cp${PYV/./}-cp${PYV/./}"
