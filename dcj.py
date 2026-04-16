@@ -27,8 +27,8 @@ import sys
 import shlex
 import shutil
 import subprocess
-from dataclasses import dataclass
-from typing import List, Tuple, Optional
+from dataclasses import dataclass, field
+from typing import List, Tuple, Optional, Any
 
 # --- Configuration ---
 DEFAULT_TEMPLATE_NAMES = [
@@ -85,7 +85,7 @@ def parse_equals_or_next(argv: List[str], flag: str) -> Tuple[Optional[str], Lis
 @dataclass
 class CustomArgs:
     yml_file: Optional[str] = None
-    env_file: Optional[str] = None
+    env_files: List[str] = field(default_factory=list)
     dump: bool = False
 
 
@@ -127,7 +127,7 @@ class ArgRewriter:
                 else:
                     value = tok.split("=", 1)[1]
                     i += 1
-                self.custom.env_file = value
+                self.custom.env_files.append(value)
                 # docker compose equivalent: --env-file value
                 out.extend(["--env-file", value])
                 continue
@@ -263,6 +263,8 @@ def render_template_string(template_path: str, env: dict, debug: bool = False) -
         trim_blocks=True,
         lstrip_blocks=True,
     )
+    # Add env function to Jinja environment
+    jenv.globals.update(env=lambda key, default=None: os.environ.get(key, default))
     try:
         tpl = jenv.get_template(tpl_name)
         rendered = tpl.render(**env)
@@ -295,18 +297,40 @@ def run_single_debug(program_name: str, argv_wo_dbg: List[str]) -> int:
     print(f"[dcj][debug] CWD: {os.getcwd()}", file=sys.stderr)
     print(f"[dcj][debug] Original args (without --jdebug): {argv_wo_dbg}", file=sys.stderr)
 
-    # Detect env file from args
-    env_file_val, _ = parse_equals_or_next(argv_wo_dbg, "--env-file")
-    env_file = env_file_val or DEFAULT_ENV_FILE
-    print(f"[dcj][debug] Env file: {env_file} (exists={os.path.isfile(env_file)})", file=sys.stderr)
-    if env_file_val and not os.path.isfile(env_file):
-        print(f"[dcj] Warning: specified --env-file '{env_file}' does not exist; continuing without loading it.", file=sys.stderr)
-    loaded_keys = load_dotenv(env_file, debug=True)
-    print(f"[dcj][debug] Loaded environment size: {len(os.environ)} vars", file=sys.stderr)
-    if loaded_keys:
-        print(f"[dcj][debug] .env added {len(loaded_keys)} vars: {', '.join(sorted(loaded_keys))}", file=sys.stderr)
-    else:
-        print(f"[dcj][debug] .env added 0 vars (existing env may have overridden or file empty)", file=sys.stderr)
+    # Detect env files from args
+    # We collect all --env-file args to match main behavior
+    env_files: List[str] = []
+    i = 0
+    while i < len(argv_wo_dbg):
+        tok = argv_wo_dbg[i]
+        if tok == "--env-file" or tok.startswith("--env-file="):
+            if tok == "--env-file" and i + 1 < len(argv_wo_dbg):
+                env_files.append(argv_wo_dbg[i + 1])
+                i += 2
+            elif tok.startswith("--env-file="):
+                env_files.append(tok.split("=", 1)[1])
+                i += 1
+            else:
+                i += 1
+        else:
+            i += 1
+
+    if not env_files:
+        env_files = [DEFAULT_ENV_FILE]
+
+    for env_file in env_files:
+        print(f"[dcj][debug] Env file: {env_file} (exists={os.path.isfile(env_file)})", file=sys.stderr)
+        if env_file in [f for f in (argv_wo_dbg if "--env-file" in argv_wo_dbg else [])] and not os.path.isfile(env_file):
+            # Simplified check: if it was passed via --env-file and doesn't exist
+            pass # load_dotenv already handles it or we can just print here if we want to match main
+
+        loaded_keys = load_dotenv(env_file, debug=True)
+        if loaded_keys:
+            print(f"[dcj][debug] Added {len(loaded_keys)} vars from {env_file}: {', '.join(sorted(loaded_keys))}", file=sys.stderr)
+        else:
+            print(f"[dcj][debug] Added 0 vars from {env_file}", file=sys.stderr)
+
+    print(f"[dcj][debug] Final loaded environment size: {len(os.environ)} vars", file=sys.stderr)
     # Dump all environment variables for inspection
     dump_environment_vars()
 
@@ -374,7 +398,7 @@ Behavior:
 
 dcj options:
   --yml-file <file>      Render the template to <file>; the equivalent "-f <file>" is passed to docker compose.
-  --env-file <file>      Load env vars from <file>; the equivalent "--env-file <file>" is passed to docker compose.
+  --env-file <file>      Load env vars from <file>; the equivalent "--env-file <file>" is passed to docker compose. Can be used multiple times.
   --dump                 Print the rendered YAML to stdout instead of writing a file or invoking compose.
   --jdebug               Show dcj debug info (including an environment variable dump) and exit. No compose is invoked.
   --jhelp                Show this dcj help and exit. (To ask Docker Compose for help, run with only -h or --help.)
@@ -431,13 +455,14 @@ def main(argv: List[str]) -> int:
     rewriter = ArgRewriter(argv)
     custom = rewriter.process()
 
-    # 2) Determine env file to load
+    # 2) Determine env files to load
     needs_default_f = None
-    env_file = custom.env_file or DEFAULT_ENV_FILE
-    # Warn if a user-specified env file is missing; proceed regardless.
-    if custom.env_file and not os.path.isfile(env_file):
-        print(f"[dcj] Warning: specified --env-file '{env_file}' does not exist; continuing without loading it.", file=sys.stderr)
-    load_dotenv(env_file, debug=debug_enabled)
+    env_files = custom.env_files if custom.env_files else [DEFAULT_ENV_FILE]
+    for env_file in env_files:
+        # Warn if a user-specified env file is missing; proceed regardless.
+        if custom.env_files and not os.path.isfile(env_file):
+            print(f"[dcj] Warning: specified --env-file '{env_file}' does not exist; continuing without loading it.", file=sys.stderr)
+        load_dotenv(env_file, debug=debug_enabled)
 
     # 3) If a template is present, render it
     template_path = find_first_template()
@@ -475,7 +500,9 @@ def main(argv: List[str]) -> int:
         final_args.extend(["-f", needs_default_f])
     final_args.extend(rewriter.rewritten)
 
-    # 5) Execute
+    # 5) Execute (only if not dump)
+    if custom.dump:
+        return 0
     cmd = compose_argv + final_args
     # Print the command in a shell-escaped way for transparency
     try:

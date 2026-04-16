@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  smtp-oauth-relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+      - .env.docker
+    container_name: {{ SMTP_DOCKER_NAME }}
+    {% if SMTP_HOSTNAME %}
+    hostname: {{ SMTP_HOSTNAME }}
+    {% endif %}
+    restart: unless-stopped
+    {% set PORTS = env('DOCKER_PORTS', '').split(',') if env('DOCKER_PORTS') else [] %}
+    {% if  PORTS %}
+    ports:
+      {% for PORT in PORTS %}
+      - "{{ PORT }}"  # Expose Defined Ports
+      {% endfor %}
+    {% endif %}
+    {%  if SMTP_DOCKER_NETWORK %}
+    networks:
+      - {{ SMTP_DOCKER_NETWORK }}
+    {% endif %}
+
+
+{%  if SMTP_DOCKER_NETWORK %}
+networks:
+  {{ SMTP_DOCKER_NETWORK }}:
+    name: {{ SMTP_DOCKER_NETWORK }}
+{% endif %}

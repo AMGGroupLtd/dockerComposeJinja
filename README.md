@@ -38,7 +38,7 @@ Custom options (dcj)
 - --yml-file <file>
   Render the template to `<file>` and pass the equivalent `-f <file>` to Docker Compose.
 - --env-file <file>
-  Load env vars from `<file>` and pass the equivalent `--env-file <file>` to Docker Compose.
+  Load env vars from `<file>` and pass the equivalent `--env-file <file>` to Docker Compose. Multiple `--env-file` arguments can be provided; they are loaded in order (later files override earlier ones).
 - --dump
   Print the rendered YAML to stdout instead of writing a file or invoking Docker Compose. Exits after printing.
 - --jdebug
