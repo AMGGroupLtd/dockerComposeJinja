@@ -1,0 +1,28 @@
+# Microsoft Entra / Azure AD OAuth2 settings
+OAUTH_CLIENT_ID="OAUTH_client_id"
+OAUTH_CLIENT_SECRET="OAUTH_client_secret"
+OAUTH_TENANT_ID="OAUTH_tenant_id"
+
+# Microsoft Graph API settings
+GRAPH_API_SCOPE="https://graph.microsoft.com/.default"
+GRAPH_API_ENDPOINT="https://graph.microsoft.com/v1.0"
+
+# SMTP relay settings
+SMTP_HOSTNAME="smtp-relay.local"
+SERVER_GREATING="Welcome to my SMTP server"
+
+# Public Port Config
+DOCKER_PORT="" # If set, then expose this port, otherwise don't expose any
+# If port is not exposed, then containers need to have the SMTP_DOCKER_NETWORK
+# added to them to allow access.
+# PLEASE ENSURE THIS PORT IS BLOCKED FROM PUBLIC ACCESS! or you will be flagged as an open relay, and thats BAD!
+
+# Logging
+LOG_LEVEL="info"
+
+# Disable TLS/SSL SMTP for clients
+REQUIRE_TLS=false
+TLS_SOURCE="off"
+AUTH_REQUIRED=false
+
+
